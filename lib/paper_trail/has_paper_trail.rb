@@ -24,6 +24,7 @@ module PaperTrail
       #               Values are objects or procs (which are called with `self`, i.e. the model with the paper
       #               trail).  See `PaperTrail::Controller.info_for_paper_trail` for how to store data from
       #               the controller.
+      # :changes_method      the name of the method that returns the changes hash. Default is `:changes`
       # :versions     the name to use for the versions association.  Default is `:versions`.
       # :version      the name to use for the method which returns the version the instance was reified from.
       #               Default is `:version`.
@@ -64,6 +65,9 @@ module PaperTrail
 
         class_attribute :versions_association_name
         self.versions_association_name = options[:versions] || :versions
+
+        class_attribute :changes_method
+        self.changes_method = options[:changes_method] || :changes
 
         has_many self.versions_association_name,
                  :class_name => version_class_name,
@@ -162,9 +166,7 @@ module PaperTrail
           }
           if version_class.column_names.include? 'object_changes'
             # The double negative (reject, !include?) preserves the hash structure of self.changes.
-            data[:object_changes] = self.changes.reject do |key, value|
-              !notably_changed.include?(key)
-            end.to_yaml
+            data[:object_changes] = notably_changes
           end
           send(self.class.versions_association_name).build merge_metadata(data)
         end
@@ -221,8 +223,19 @@ module PaperTrail
         self.class.only.empty? ? changed_and_not_ignored : (changed_and_not_ignored & self.class.only)
       end
 
+      def notably_changes
+        # The double negative (reject, !include?) preserves the hash structure of self.changes.
+        send(self.class.changes_method).reject do |key, value|
+          ignored_or_skipped.include?(key)
+        end
+      end
+
       def changed_and_not_ignored
         changed - self.class.ignore - self.class.skip
+      end
+
+      def ignored_or_skipped
+        self.class.ignore + self.class.skip
       end
 
       def switched_on?

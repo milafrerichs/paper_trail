@@ -110,6 +110,10 @@ class SetUpTestTables < ActiveRecord::Migration
       t.string    :language_code
       t.string    :type
     end
+
+    create_table :custom_change_widgets, :force => true do |t|
+      t.string    :foo
+    end
   end
 
   def self.down
@@ -130,5 +134,6 @@ class SetUpTestTables < ActiveRecord::Migration
     drop_table :documents
     drop_table :legacy_widgets
     drop_table :translations
+    drop_table :custom_change_widgets
   end
 end

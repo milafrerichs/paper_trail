@@ -111,6 +111,19 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
     end
   end
 
+  context 'A record with defined "changes" method' do
+    setup do
+      @custom_change_widget = CustomChangeWidget.create(:foo => 1)
+    end
+
+    should "use the custom changes method" do
+      @custom_change_widget.update_attributes(:foo => 2)
+      expected = { "foo" => [1, 2], "custom_attribute" => "value" }
+      assert_equal expected, YAML.load(@custom_change_widget.versions.last.object_changes)
+    end
+
+  end
+
   context 'A new record' do
     setup { @widget = Widget.new }
 
