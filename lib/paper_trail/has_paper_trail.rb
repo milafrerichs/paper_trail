@@ -25,6 +25,7 @@ module PaperTrail
       #               trail).  See `PaperTrail::Controller.info_for_paper_trail` for how to store data from
       #               the controller.
       # :changes_method      the name of the method that returns the changes hash. Default is `:changes`
+      # :changed_method      the name of the method that returns the changed attributes. Default is `:changed`
       # :versions     the name to use for the versions association.  Default is `:versions`.
       # :version      the name to use for the method which returns the version the instance was reified from.
       #               Default is `:version`.
@@ -68,6 +69,9 @@ module PaperTrail
 
         class_attribute :changes_method
         self.changes_method = options[:changes_method] || :changes
+
+        class_attribute :changed_method
+        self.changed_method = options[:changed_method] || :changed
 
         has_many self.versions_association_name,
                  :class_name => version_class_name,
@@ -231,7 +235,7 @@ module PaperTrail
       end
 
       def changed_and_not_ignored
-        changed - self.class.ignore - self.class.skip
+        self.send(self.class.changed_method) - self.class.ignore - self.class.skip
       end
 
       def ignored_or_skipped
