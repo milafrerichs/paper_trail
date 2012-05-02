@@ -211,7 +211,15 @@ module PaperTrail
         end
         previous.tap do |prev|
           prev.id = id
-          changed_attributes.each { |attr, before| prev[attr] = before }
+
+          # do not use the attr_accessor of translated attributes, because
+          # otherwise globalize would write it to its stash and not save the
+          # update
+          relevant_attributes = changed_attributes
+          if respond_to? :translated?
+            relevant_attributes.reject!{|k,v| translated? k}
+          end
+          relevant_attributes.each { |attr, before| prev[attr] = before }
         end
       end
 
