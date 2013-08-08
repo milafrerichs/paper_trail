@@ -7,7 +7,7 @@ class VersionTest < ActiveSupport::TestCase
     assert Version.creates.present?
   }
 
-  describe "Version.creates" do
+  context "Version.creates" do
     should "return only create events" do
       Version.creates.each do |version|
         assert_equal "create", version.event
@@ -15,7 +15,7 @@ class VersionTest < ActiveSupport::TestCase
     end
   end
 
-  describe "Version.updates" do
+  context "Version.updates" do
     setup {
       @article.update_attributes(:name => 'Animal')
       assert Version.updates.present?
@@ -28,7 +28,7 @@ class VersionTest < ActiveSupport::TestCase
     end
   end
 
-  describe "Version.destroys" do
+  context "Version.destroys" do
     setup {
       @article.destroy
       assert Version.destroys.present?
@@ -41,7 +41,7 @@ class VersionTest < ActiveSupport::TestCase
     end
   end
 
-  describe "Version.not_creates" do
+  context "Version.not_creates" do
     setup {
       @article.update_attributes(:name => 'Animal')
       @article.destroy

@@ -2,19 +2,21 @@ require 'test_helper'
 
 class ProtectedAttrsTest < ActiveSupport::TestCase
 
-  describe 'A model with `attr_accessible` created' do
+  context 'A model with `attr_accessible` created' do
     setup do
       @widget = ProtectedWidget.create! :name => 'Henry'
       @initial_attributes = @widget.attributes
     end
 
-    should { assert !ProtectedWidget.accessible_attributes.empty? }
+    should "" do
+      assert !ProtectedWidget.accessible_attributes.empty?
+    end
 
     should 'be `nil` in its previous version' do
       assert_nil @widget.previous_version
     end
 
-    describe 'which is then updated' do
+    context 'which is then updated' do
       setup do
         @widget.assign_attributes(:name => 'Jeff', :a_text => 'Short statement')
         @widget.an_integer = 42
