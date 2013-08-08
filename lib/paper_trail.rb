@@ -1,13 +1,14 @@
-require 'singleton'
-require 'yaml'
-
 require 'paper_trail/config'
 require 'paper_trail/controller'
 require 'paper_trail/has_paper_trail'
-require 'paper_trail/version'
+require 'paper_trail/cleaner'
+
+require 'paper_trail/serializers/yaml'
+require 'paper_trail/serializers/json'
 
 # PaperTrail's module methods can be called in both models and controllers.
 module PaperTrail
+  extend PaperTrail::Cleaner
 
   # Switches PaperTrail on or off.
   def self.enabled=(value)
@@ -69,6 +70,18 @@ module PaperTrail
     paper_trail_store[:controller_info] = value
   end
 
+  # Getter and Setter for PaperTrail Serializer
+  def self.serializer=(value)
+    PaperTrail.config.serializer = value
+  end
+
+  def self.serializer
+    PaperTrail.config.serializer
+  end
+
+  def self.active_record_protected_attributes?
+    @active_record_protected_attributes ||= ActiveRecord::VERSION::STRING.to_f < 4.0 || defined?(ProtectedAttributes)
+  end
 
   private
 
@@ -85,8 +98,13 @@ module PaperTrail
     @@config ||= PaperTrail::Config.instance
   end
 
+  def self.configure
+    yield config
+  end
+
 end
 
+require 'paper_trail/version'
 
 ActiveSupport.on_load(:active_record) do
   include PaperTrail::Model
