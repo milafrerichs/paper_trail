@@ -3,19 +3,15 @@ ENV["RAILS_ENV"] = "test"
 
 require File.expand_path("../dummy/config/environment.rb",  __FILE__)
 require "rails/test_help"
-
+require "minitest/reporters"
+MiniTest::Reporters.use! MiniTest::Reporters::SpecReporter.new
 #ActionMailer::Base.delivery_method = :test
 #ActionMailer::Base.perform_deliveries = true
 #ActionMailer::Base.default_url_options[:host] = "test.com"
 
 Rails.backtrace_cleaner.remove_silencers!
 
-require 'shoulda'
-
-# Configure capybara for integration testing
-require "capybara/rails"
-Capybara.default_driver   = :rack_test
-Capybara.default_selector = :css
+require 'ffaker'
 
 # Run any available migration
 ActiveRecord::Migrator.migrate File.expand_path("../dummy/db/migrate/", __FILE__)
@@ -41,9 +37,4 @@ def change_schema
     add_column :versions, :custom_created_at, :datetime
   end
   ActiveRecord::Migration.verbose = true
-end
-
-class Version < ActiveRecord::Base
-  attr_accessible :created_at, :updated_at,
-    :answer, :action, :question, :article_id, :ip, :user_agent
 end

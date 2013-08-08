@@ -2,116 +2,156 @@ require 'test_helper'
 
 class HasPaperTrailModelTest < ActiveSupport::TestCase
 
-  context 'A record with defined "only" and "ignore" attributes' do
+  describe "A record with defined 'only' and 'ignore' attributes" do
     setup { @article = Article.create }
+    should 'creation should change the number of versions' do assert_equal(1, Version.count) end
 
-    context 'which updates an ignored column' do
+    describe 'which updates an ignored column' do
       setup { @article.update_attributes :title => 'My first title' }
-      should_not_change('the number of versions') { Version.count }
+      should 'not change the number of versions' do assert_equal(1, Version.count) end
     end
 
-    context 'which updates an ignored column and a selected column' do
+    describe 'which updates an ignored column and a selected column' do
       setup { @article.update_attributes :title => 'My first title', :content => 'Some text here.' }
-      should_change('the number of versions', :by => 1) { Version.count }
+      should 'change the number of versions' do assert_equal(2, Version.count) end
+
+      should "show the new version in the model's `versions` association" do
+        assert_equal(2, @article.versions.size)
+      end
 
       should 'have stored only non-ignored attributes' do
         assert_equal ({'content' => [nil, 'Some text here.']}), @article.versions.last.changeset
       end
     end
 
-    context 'which updates a selected column' do
+    describe 'which updates a selected column' do
       setup { @article.update_attributes :content => 'Some text here.' }
-      should_change('the number of versions', :by => 1) { Version.count }
+      should 'change the number of versions' do assert_equal(2, Version.count) end
+
+      should "show the new version in the model's `versions` association" do
+        assert_equal(2, @article.versions.size)
+      end
     end
 
-    context 'which updates a non-ignored and non-selected column' do
+    describe 'which updates a non-ignored and non-selected column' do
       setup { @article.update_attributes :abstract => 'Other abstract'}
-      should_not_change('the number of versions') { Version.count }
+      should 'not change the number of versions' do assert_equal(1, Version.count) end
     end
 
-    context 'which updates a skipped column' do
+    describe 'which updates a skipped column' do
       setup { @article.update_attributes :file_upload => 'Your data goes here' }
-      should_not_change('the number of versions') { Version.count }
+      should 'not change the number of versions' do assert_equal(1, Version.count) end
     end
 
-    context 'which updates a skipped column and a selected column' do
+    describe 'which updates a skipped column and a selected column' do
       setup { @article.update_attributes :file_upload => 'Your data goes here', :content => 'Some text here.' }
-      should_change('the number of versions', :by => 1) { Version.count }
+      should 'change the number of versions' do assert_equal(2, Version.count) end
+
+      should "show the new version in the model's `versions` association" do
+        assert_equal(2, @article.versions.size)
+      end
 
       should 'have stored only non-skipped attributes' do
         assert_equal ({'content' => [nil, 'Some text here.']}), @article.versions.last.changeset
       end
 
-      context 'and when updated again' do
+      describe 'and when updated again' do
         setup do
           @article.update_attributes :file_upload => 'More data goes here', :content => 'More text here.'
           @old_article = @article.versions.last
         end
 
         should 'have removed the skipped attributes when saving the previous version' do
-          assert_equal nil, YAML::load(@old_article.object)['file_upload']
+          assert_equal nil, PaperTrail.serializer.load(@old_article.object)['file_upload']
         end
 
         should 'have kept the non-skipped attributes in the previous version' do
-          assert_equal 'Some text here.', YAML::load(@old_article.object)['content']
+          assert_equal 'Some text here.', PaperTrail.serializer.load(@old_article.object)['content']
         end
       end
     end
-  end
 
-  context 'A record with defined "ignore" attribute' do
-    setup { @legacy_widget = LegacyWidget.create }
+    describe 'which gets destroyed' do
+      setup { @article.destroy }
+      should 'change the number of versions' do assert_equal(2, Version.count) end
 
-    context 'which updates an ignored column' do
-      setup { @legacy_widget.update_attributes :version => 1 }
-      should_not_change('the number of versions') { Version.count }
+      should "show the new version in the model's `versions` association" do
+        assert_equal(2, @article.versions.size)
+      end
     end
   end
 
-  context 'A record with defined "if" and "unless" attributes' do
+  describe "A record with defined 'ignore' attribute" do
+    setup { @legacy_widget = LegacyWidget.create }
+
+    describe 'which updates an ignored column' do
+      setup { @legacy_widget.update_attributes :version => 1 }
+      should 'not change the number of versions' do assert_equal(1, Version.count) end
+    end
+  end
+
+  describe 'A record with defined "if" and "unless" attributes' do
     setup { @translation = Translation.new :headline => 'Headline' }
 
-    context 'for non-US translations' do
+    describe 'for non-US translations' do
       setup { @translation.save }
-      should_not_change('the number of versions') { Version.count }
+      should 'not change the number of versions' do assert_equal(0, Version.count) end
 
-      context 'after update' do
+      describe 'after update' do
         setup { @translation.update_attributes :content => 'Content' }
-        should_not_change('the number of versions') { Version.count }
+        should 'not change the number of versions' do assert_equal(0, Version.count) end
+      end
+
+      describe 'after destroy' do
+        setup { @translation.destroy }
+        should 'not change the number of versions' do assert_equal(0, Version.count) end
       end
     end
 
-    context 'for US translations' do
+    describe 'for US translations' do
       setup { @translation.language_code = "US" }
 
-      context 'that are drafts' do
+      describe 'that are drafts' do
         setup do
           @translation.type = 'DRAFT'
           @translation.save
         end
 
-        should_not_change('the number of versions') { Version.count }
+        should 'not change the number of versions' do assert_equal(0, Version.count) end
 
-        context 'after update' do
+        describe 'after update' do
           setup { @translation.update_attributes :content => 'Content' }
-          should_not_change('the number of versions') { Version.count }
+          should 'not change the number of versions' do assert_equal(0, Version.count) end
         end
       end
 
-      context 'that are not drafts' do
+      describe 'that are not drafts' do
         setup { @translation.save }
 
-        should_change('the number of versions', :by => 1) { Version.count }
+        should 'change the number of versions' do assert_equal(1, Version.count) end
 
-        context 'after update' do
+        describe 'after update' do
           setup { @translation.update_attributes :content => 'Content' }
-          should_change('the number of versions', :by => 1) { Version.count }
+          should 'change the number of versions' do assert_equal(2, Version.count) end
+
+          should "show the new version in the model's `versions` association" do
+            assert_equal(2, @translation.versions.size)
+          end
+        end
+
+        describe 'after destroy' do
+          setup { @translation.destroy }
+          should 'change the number of versions' do assert_equal(2, Version.count) end
+
+          should "show the new version in the model's `versions` association" do
+            assert_equal(2, @translation.versions.size)
+          end
         end
       end
     end
   end
 
-  context 'A record with defined "changes" method' do
+  describe 'A record with defined changes method' do
     setup do
       @custom_change_widget = CustomChangeWidget.create(:foo => 1)
     end
@@ -124,7 +164,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
 
   end
 
-  context 'A new record' do
+  describe 'A new record' do
     setup { @widget = Widget.new }
 
     should 'not have any previous versions' do
@@ -136,7 +176,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
     end
 
 
-    context 'which is then created' do
+    describe 'which is then created' do
       setup { @widget.update_attributes :name => 'Henry' }
 
       should 'have one previous version' do
@@ -156,12 +196,19 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         assert @widget.live?
       end
 
-      should 'not have changes' do
-        assert_equal Hash.new, @widget.versions.last.changeset
+      should 'have changes' do
+        changes = {
+          'name'       => [nil, 'Henry'],
+          'created_at' => [nil, @widget.created_at],
+          'updated_at' => [nil, @widget.updated_at],
+          'id'         => [nil, 1]
+        }
+
+        assert_equal changes, @widget.versions.last.changeset
       end
 
-      context 'and then updated without any changes' do
-        setup { @widget.save }
+      describe 'and then updated without any changes' do
+        setup { @widget.touch }
 
         should 'not have a new version' do
           assert_equal 1, @widget.versions.length
@@ -169,7 +216,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       end
 
 
-      context 'and then updated with changes' do
+      describe 'and then updated with changes' do
         setup { @widget.update_attributes :name => 'Harry' }
 
         should 'have two previous versions' do
@@ -197,7 +244,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         end
 
         should 'have stored changes' do
-          assert_equal ({'name' => ['Henry', 'Harry']}), YAML::load(@widget.versions.last.object_changes)
+          assert_equal ({'name' => ['Henry', 'Harry']}), PaperTrail.serializer.load(@widget.versions.last.object_changes)
           assert_equal ({'name' => ['Henry', 'Harry']}), @widget.versions.last.changeset
         end
 
@@ -223,7 +270,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
           end
         end
 
-        context 'and has one associated object' do
+        describe 'and has one associated object' do
           setup do
             @wotsit = @widget.create_wotsit :name => 'John'
           end
@@ -242,7 +289,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         end
 
 
-        context 'and has many associated objects' do
+        describe 'and has many associated objects' do
           setup do
             @f0 = @widget.fluxors.create :name => 'f-zero'
             @f1 = @widget.fluxors.create :name => 'f-one'
@@ -259,7 +306,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         end
 
 
-        context 'and then destroyed' do
+        describe 'and then destroyed' do
           setup do
             @fluxor = @widget.fluxors.create :name => 'flux'
             @widget.destroy
@@ -299,7 +346,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
 
   # Test the serialisation and deserialisation.
   # TODO: binary
-  context "A record's papertrail" do
+  describe "A record's papertrail" do
     setup do
       @date_time = DateTime.now.utc
       @time = Time.now
@@ -363,9 +410,10 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
     end
 
 
-    context "after a column is removed from the record's schema" do
+    describe "after a column is removed from the record's schema" do
       setup do
         change_schema
+        Widget.connection.schema_cache.clear!
         Widget.reset_column_information
         assert_raise(NoMethodError) { Widget.new.sacrificial_column }
         @last = @widget.versions.last
@@ -390,10 +438,10 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'A record' do
+  describe 'A record' do
     setup { @widget = Widget.create :name => 'Zaphod' }
 
-    context 'with PaperTrail globally disabled' do
+    describe 'with PaperTrail globally disabled' do
       setup do
         PaperTrail.enabled = false
         @count = @widget.versions.length
@@ -401,7 +449,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
 
       teardown { PaperTrail.enabled = true }
 
-      context 'when updated' do
+      describe 'when updated' do
         setup { @widget.update_attributes :name => 'Beeblebrox' }
 
         should 'not add to its trail' do
@@ -410,7 +458,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       end
     end
 
-    context 'with its paper trail turned off' do
+    describe 'with its paper trail turned off' do
       setup do
         Widget.paper_trail_off
         @count = @widget.versions.length
@@ -418,7 +466,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
 
       teardown { Widget.paper_trail_on }
 
-      context 'when updated' do
+      describe 'when updated' do
         setup { @widget.update_attributes :name => 'Beeblebrox' }
 
         should 'not add to its trail' do
@@ -426,17 +474,17 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         end
       end
 
-      context 'when destroyed "without versioning"' do
+      describe 'when destroyed "without versioning"' do
         should 'leave paper trail off after call' do
           @widget.without_versioning :destroy
           assert !Widget.paper_trail_enabled_for_model
         end
       end
 
-      context 'and then its paper trail turned on' do
+      describe 'and then its paper trail turned on' do
         setup { Widget.paper_trail_on }
 
-        context 'when updated' do
+        describe 'when updated' do
           setup { @widget.update_attributes :name => 'Ford' }
 
           should 'add to its trail' do
@@ -444,7 +492,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
           end
         end
 
-        context 'when updated "without versioning"' do
+        describe 'when updated "without versioning"' do
           setup do
             @widget.without_versioning do
               @widget.update_attributes :name => 'Ford'
@@ -464,12 +512,12 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'A papertrail with somebody making changes' do
+  describe 'A papertrail with somebody making changes' do
     setup do
       @widget = Widget.new :name => 'Fidget'
     end
 
-    context 'when a record is created' do
+    describe 'when a record is created' do
       setup do
         PaperTrail.whodunnit = 'Alice'
         @widget.save
@@ -483,7 +531,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         assert_equal 'Alice', @widget.originator
       end
 
-      context 'when a record is updated' do
+      describe 'when a record is updated' do
         setup do
           PaperTrail.whodunnit = 'Bob'
           @widget.update_attributes :name => 'Rivet'
@@ -497,7 +545,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
           assert_equal 'Bob',   @widget.originator
         end
 
-        context 'when a record is destroyed' do
+        describe 'when a record is destroyed' do
           setup do
             PaperTrail.whodunnit = 'Charlie'
             @widget.destroy
@@ -516,7 +564,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'A subclass' do
+  describe 'A subclass' do
     setup do
       @foo = FooWidget.create
       @foo.update_attributes :name => 'Fooey'
@@ -529,7 +577,13 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       assert_nil Version.last.next
     end
 
-    context 'when destroyed' do
+    should 'should return the correct originator' do
+      PaperTrail.whodunnit = 'Ben'
+      @foo.update_attribute(:name, 'Geoffrey')
+      assert_equal PaperTrail.whodunnit, @foo.originator
+    end
+
+    describe 'when destroyed' do
       setup { @foo.destroy }
 
       should 'reify with the correct type' do
@@ -542,14 +596,14 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'An item with versions' do
+  describe 'An item with versions' do
     setup do
       @widget = Widget.create :name => 'Widget'
       @widget.update_attributes :name => 'Fidget'
       @widget.update_attributes :name => 'Digit'
     end
 
-    context 'which were created over time' do
+    describe 'which were created over time' do
       setup do
         @created       = 2.days.ago
         @first_update  = 1.day.ago
@@ -587,9 +641,18 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       should 'return the current object for version_at after latest update' do
         assert_equal 'Digit', @widget.version_at(1.day.from_now).name
       end
+
+      describe 'passing in a string representation of a timestamp' do
+        should 'still return a widget when appropriate' do
+          # need to add 1 second onto the timestamps before casting to a string, since casting a Time to a string drops the microseconds
+          assert_equal 'Widget', @widget.version_at((@created + 1.second).to_s).name
+          assert_equal 'Fidget', @widget.version_at((@first_update + 1.second).to_s).name
+          assert_equal 'Digit', @widget.version_at((@second_update + 1.second).to_s).name
+        end
+      end
     end
 
-    context '.versions_between' do
+    describe '.versions_between' do
       setup do
         @created       = 30.days.ago
         @first_update  = 15.days.ago
@@ -608,7 +671,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       end
     end
 
-    context 'on the first version' do
+    describe 'on the first version' do
       setup { @version = @widget.versions.first }
 
       should 'have a nil previous version' do
@@ -624,7 +687,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       end
     end
 
-    context 'on the last version' do
+    describe 'on the last version' do
       setup { @version = @widget.versions.last }
 
       should 'return the previous version' do
@@ -642,10 +705,13 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'An item' do
-    setup { @article = Article.new }
+  describe 'An item' do
+    setup do
+      @initial_title = 'Foobar'
+      @article = Article.new :title => @initial_title
+    end
 
-    context 'which is created' do
+    describe 'which is created' do
       setup { @article.save }
 
       should 'store fixed meta data' do
@@ -663,10 +729,16 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       should 'store dynamic meta data based on a method of the item' do
         assert_equal @article.action_data_provider_method, @article.versions.last.action
       end
+      
+      should 'store dynamic meta data based on an attribute of the item prior to creation' do
+        assert_equal nil, @article.versions.last.title
+      end
 
 
-      context 'and updated' do
-        setup { @article.update_attributes! :content => 'Better text.' }
+      describe 'and updated' do
+        setup do
+          @article.update_attributes! :content => 'Better text.', :title => 'Rhubarb'
+        end
 
         should 'store fixed meta data' do
           assert_equal 42, @article.versions.last.answer
@@ -679,10 +751,14 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         should 'store dynamic meta data which depends on the item' do
           assert_equal @article.id, @article.versions.last.article_id
         end
+        
+        should 'store dynamic meta data based on an attribute of the item prior to the update' do
+          assert_equal @initial_title, @article.versions.last.title
+        end
       end
 
 
-      context 'and destroyed' do
+      describe 'and destroyed' do
         setup { @article.destroy }
 
         should 'store fixed meta data' do
@@ -696,12 +772,15 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         should 'store dynamic meta data which depends on the item' do
           assert_equal @article.id, @article.versions.last.article_id
         end
-
+        
+        should 'store dynamic meta data based on an attribute of the item prior to the destruction' do
+          assert_equal @initial_title, @article.versions.last.title
+        end
       end
     end
   end
 
-  context 'A reified item' do
+  describe 'A reified item' do
     setup do
       widget = Widget.create :name => 'Bob'
       %w( Tom Dick Jane ).each { |name| widget.update_attributes :name => name }
@@ -720,7 +799,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'A non-reified item' do
+  describe 'A non-reified item' do
     setup { @widget = Widget.new }
 
     should 'not have a previous version' do
@@ -731,43 +810,42 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       assert_nil @widget.next_version
     end
 
-    context 'with versions' do
+    describe 'with versions' do
       setup do
         @widget.save
         %w( Tom Dick Jane ).each { |name| @widget.update_attributes :name => name }
       end
 
       should 'have a previous version' do
-        assert_equal @widget.versions.last.reify, @widget.previous_version
+        assert_equal @widget.versions.last.reify.name, @widget.previous_version.name
       end
 
-      should 'have a next version' do
+      should 'not have a next version' do
         assert_nil @widget.next_version
       end
     end
   end
 
-  context 'A reified item' do
+  describe 'A reified item' do
     setup do
-      widget = Widget.create :name => 'Bob'
-      %w( Tom Dick Jane ).each { |name| widget.update_attributes :name => name }
-      @versions      = widget.versions
-      @second_widget = @versions[1].reify  # first widget is null
-      @last_widget   = @versions.last.reify
+      @widget = Widget.create :name => 'Bob'
+      %w(Tom Dick Jane).each { |name| @widget.update_attributes :name => name }
+      @second_widget = @widget.versions[1].reify  # first widget is `nil`
+      @last_widget   = @widget.versions.last.reify
     end
 
     should 'have a previous version' do
-      assert_nil @second_widget.previous_version
-      assert_equal @versions[-2].reify, @last_widget.previous_version
+      assert_nil @second_widget.previous_version # `create` events return `nil` for `reify`
+      assert_equal @widget.versions[-2].reify.name, @last_widget.previous_version.name
     end
 
     should 'have a next version' do
-      assert_equal @versions[2].reify, @second_widget.next_version
-      assert_nil @last_widget.next_version
+      assert_equal @widget.versions[2].reify.name, @second_widget.next_version.name
+      assert_equal @last_widget.next_version.name, @widget.name
     end
   end
 
-  context ":has_many :through" do
+  describe ":has_many :through" do
     setup do
       @book = Book.create :title => 'War and Peace'
       @dostoyevsky  = Person.create :name => 'Dostoyevsky'
@@ -808,16 +886,16 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'A model with a has_one association' do
+  describe 'A model with a has_one association' do
     setup { @widget = Widget.create :name => 'widget_0' }
 
-    context 'before the associated was created' do
+    describe 'before the associated was created' do
       setup do
         @widget.update_attributes :name => 'widget_1'
         @wotsit = @widget.create_wotsit :name => 'wotsit_0'
       end
 
-      context 'when reified' do
+      describe 'when reified' do
         setup { @widget_0 = @widget.versions.last.reify(:has_one => 1) }
 
         should 'see the associated as it was at the time' do
@@ -826,7 +904,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       end
     end
 
-    context 'where the associated is created between model versions' do
+    describe 'where the association is created between model versions' do
       setup do
         @wotsit = @widget.create_wotsit :name => 'wotsit_0'
         make_last_version_earlier @wotsit
@@ -834,7 +912,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         @widget.update_attributes :name => 'widget_1'
       end
 
-      context 'when reified' do
+      describe 'when reified' do
         setup { @widget_0 = @widget.versions.last.reify(:has_one => 1) }
 
         should 'see the associated as it was at the time' do
@@ -842,7 +920,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         end
       end
 
-      context 'and then the associated is updated between model versions' do
+      describe 'and then the associated is updated between model versions' do
         setup do
           @wotsit.update_attributes :name => 'wotsit_1'
           make_last_version_earlier @wotsit
@@ -853,7 +931,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
           @wotsit.update_attributes :name => 'wotsit_3'
         end
 
-        context 'when reified' do
+        describe 'when reified' do
           setup { @widget_1 = @widget.versions.last.reify(:has_one => 1) }
 
           should 'see the associated as it was at the time' do
@@ -861,7 +939,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
           end
         end
 
-        context 'when reified opting out of has_one reification' do
+        describe 'when reified opting out of has_one reification' do
           setup { @widget_1 = @widget.versions.last.reify(:has_one => false) }
 
           should 'see the associated as it is live' do
@@ -870,7 +948,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         end
       end
 
-      context 'and then the associated is destroyed between model versions' do
+      describe 'and then the associated is destroyed between model versions' do
         setup do
           @wotsit.destroy
           make_last_version_earlier @wotsit
@@ -878,7 +956,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
           @widget.update_attributes :name => 'widget_3'
         end
 
-        context 'when reified' do
+        describe 'when reified' do
           setup { @widget_2 = @widget.versions.last.reify(:has_one => 1) }
 
           should 'see the associated as it was at the time' do
@@ -889,20 +967,105 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
     end
   end
 
-  context 'A new model instance which uses a custom Version class' do
-    setup { @post = Post.new }
+  describe 'When an attribute has a custom serializer' do
+    setup { @person = Person.new(:time_zone => "Samoa") }
 
-    context 'which is then saved' do
-      setup { @post.save }
-      should_change('the number of post versions') { PostVersion.count }
-      should_not_change('the number of versions') { Version.count }
+    should "be an instance of ActiveSupport::TimeZone" do
+      assert_equal ActiveSupport::TimeZone, @person.time_zone.class
+    end
+
+    describe 'when the model is saved' do
+      setup do
+        @changes_before_save = @person.changes.dup
+        @person.save!
+      end
+
+      # Test for serialization:
+      should 'version.object_changes should not have stored the default, ridiculously long (to_yaml) serialization of the TimeZone object' do
+        assert @person.versions.last.object_changes.length < 105, "object_changes length was #{@person.versions.last.object_changes.length}"
+      end
+      # It should store the serialized value.
+      should 'version.object_changes attribute should have stored the value returned by the attribute serializer' do
+        as_stored_in_version = HashWithIndifferentAccess[YAML::load(@person.versions.last.object_changes)]
+        assert_equal [nil, 'Samoa'], as_stored_in_version[:time_zone]
+        assert_equal @person.instance_variable_get(:@attributes)['time_zone'].serialized_value, as_stored_in_version[:time_zone].last
+      end
+
+      # Tests for unserialization:
+      should 'version.changeset should convert the attribute value back to its original, unserialized value' do
+        assert_equal @person.instance_variable_get(:@attributes)['time_zone'].unserialized_value, @person.versions.last.changeset[:time_zone].last
+      end
+      should "record.changes (before save) returns the original, unserialized values" do
+        assert_equal [NilClass, ActiveSupport::TimeZone], @changes_before_save[:time_zone].map(&:class)
+      end
+      should 'version.changeset should be the same as record.changes was before the save' do
+        assert_equal @changes_before_save, @person.versions.last.changeset.delete_if { |key, val| key.to_sym == :id }
+        assert_equal [NilClass, ActiveSupport::TimeZone], @person.versions.last.changeset[:time_zone].map(&:class)
+      end
+
+      describe 'when that attribute is updated' do
+        setup do
+          @attribute_value_before_change = @person.instance_variable_get(:@attributes)['time_zone']
+          @person.assign_attributes({ :time_zone => 'Pacific Time (US & Canada)' })
+          @changes_before_save = @person.changes.dup
+          @person.save!
+        end
+
+        # Tests for serialization:
+        # Before the serialized attributes fix, the object/object_changes value that was stored was ridiculously long (58723).
+        should 'version.object should not have stored the default, ridiculously long (to_yaml) serialization of the TimeZone object' do
+          assert @person.versions.last.object.        length < 105, "object         length was #{@person.versions.last.object        .length}"
+        end
+        should 'version.object_changes should not have stored the default, ridiculously long (to_yaml) serialization of the TimeZone object' do
+          assert @person.versions.last.object_changes.length < 105, "object_changes length was #{@person.versions.last.object_changes.length}"
+        end
+        # But now it stores the short, serialized value.
+        should 'version.object attribute should have stored the value returned by the attribute serializer' do
+          as_stored_in_version = HashWithIndifferentAccess[YAML::load(@person.versions.last.object)]
+          assert_equal 'Samoa', as_stored_in_version[:time_zone]
+          assert_equal @attribute_value_before_change.serialized_value, as_stored_in_version[:time_zone]
+        end
+        should 'version.object_changes attribute should have stored the value returned by the attribute serializer' do
+          as_stored_in_version = HashWithIndifferentAccess[YAML::load(@person.versions.last.object_changes)]
+          assert_equal ['Samoa', 'Pacific Time (US & Canada)'], as_stored_in_version[:time_zone]
+          assert_equal @person.instance_variable_get(:@attributes)['time_zone'].serialized_value, as_stored_in_version[:time_zone].last
+        end
+
+        # Tests for unserialization:
+        should 'version.reify should convert the attribute value back to its original, unserialized value' do
+          assert_equal @attribute_value_before_change.unserialized_value, @person.versions.last.reify.time_zone
+        end
+        should 'version.changeset should convert the attribute value back to its original, unserialized value' do
+          assert_equal @person.instance_variable_get(:@attributes)['time_zone'].unserialized_value, @person.versions.last.changeset[:time_zone].last
+        end
+        should "record.changes (before save) returns the original, unserialized values" do
+          assert_equal [ActiveSupport::TimeZone, ActiveSupport::TimeZone], @changes_before_save[:time_zone].map(&:class)
+        end
+        should 'version.changeset should be the same as record.changes was before the save' do
+          assert_equal @changes_before_save, @person.versions.last.changeset
+          assert_equal [ActiveSupport::TimeZone, ActiveSupport::TimeZone], @person.versions.last.changeset[:time_zone].map(&:class)
+        end
+
+      end
     end
   end
 
-  context 'An existing model instance which uses a custom Version class' do
-    setup { @post = Post.create }
 
-    context 'on the first version' do
+  describe 'A new model instance which uses a custom Version class' do
+    setup { @post = Post.new }
+
+    describe 'which is then saved' do
+      setup { @post.save }
+      should 'change the number of post versions' do assert_equal 1, PostVersion.count end
+      should 'not change the number of versions' do assert_equal(0, Version.count) end
+    end
+  end
+
+  describe 'An existing model instance which uses a custom Version class' do
+    setup { @post = Post.create }
+    should 'have one post version' do assert_equal(1, PostVersion.count) end
+
+    describe 'on the first version' do
       setup { @version = @post.versions.first }
 
       should 'have the correct index' do
@@ -914,10 +1077,10 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       assert_equal "PostVersion", @post.versions.first.class.name
     end
 
-    context 'which is modified' do
+    describe 'which is modified' do
       setup { @post.update_attributes({ :content => "Some new content" }) }
-      should_change('the number of post versions') { PostVersion.count }
-      should_not_change('the number of versions') { Version.count }
+      should 'change the number of post versions' do assert_equal(2, PostVersion.count) end
+      should 'not change the number of versions' do assert_equal(0, Version.count) end
       should "not have stored changes when object_changes column doesn't exist" do
         assert_nil @post.versions.last.changeset
       end
@@ -925,7 +1088,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'An overwritten default accessor' do
+  describe 'An overwritten default accessor' do
     setup do
       @song = Song.create :length => 4
       @song.update_attributes :length => 5
@@ -940,7 +1103,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
   end
 
 
-  context 'An unsaved record' do
+  describe 'An unsaved record' do
     setup do
       @widget = Widget.new
       @widget.destroy
@@ -950,7 +1113,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
     end
   end
 
-  context 'A model with a custom association' do
+  describe 'A model with a custom association' do
     setup do
       @doc = Document.create
       @doc.update_attributes :name => 'Doc 1'
@@ -964,15 +1127,19 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       assert_equal 2, @doc.paper_trail_versions.length
     end
 
-    should 'respond to previous_version as normal' do
+    should 'respond to `next_version` as normal' do
+      assert_equal @doc.paper_trail_versions.last.reify.next_version.name, @doc.name
+    end
+
+    should 'respond to `previous_version` as normal' do
       @doc.update_attributes :name => 'Doc 2'
       assert_equal 3, @doc.paper_trail_versions.length
       assert_equal 'Doc 1', @doc.previous_version.name
     end
   end
 
-  context 'The `on` option' do
-    context 'on create' do
+  describe 'The `on` option' do
+    describe 'on create' do
       setup do
         Fluxor.instance_eval <<-END
           has_paper_trail :on => [:create]
@@ -986,7 +1153,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         assert_equal 'create', @fluxor.versions.last.event
       end
     end
-    context 'on update' do
+    describe 'on update' do
       setup do
         Fluxor.reset_callbacks :create
         Fluxor.reset_callbacks :update
@@ -1003,7 +1170,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
         assert_equal 'update', @fluxor.versions.last.event
       end
     end
-    context 'on destroy' do
+    describe 'on destroy' do
       setup do
         Fluxor.reset_callbacks :create
         Fluxor.reset_callbacks :update
@@ -1022,7 +1189,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
     end
   end
 
-  context 'A model with column version and custom version_method' do
+  describe 'A model with column version and custom version_method' do
     setup do
       @legacy_widget = LegacyWidget.create(:name => "foo", :version => 2)
     end
@@ -1041,7 +1208,7 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
     end
   end
 
-  context 'A reified item with a column -version- and custom version_method' do
+  describe 'A reified item with a column -version- and custom version_method' do
     setup do
       widget = LegacyWidget.create(:name => "foo", :version => 2)
       %w( bar baz ).each { |name| widget.update_attributes :name => name }
@@ -1057,6 +1224,76 @@ class HasPaperTrailModelTest < ActiveSupport::TestCase
       assert_equal @widget.versions[-2].reify, @widget.previous_version
     end
   end
+
+  describe 'custom events' do
+    describe 'on create' do
+      setup do
+        Fluxor.reset_callbacks :create
+        Fluxor.reset_callbacks :update
+        Fluxor.reset_callbacks :destroy
+        Fluxor.instance_eval <<-END
+          has_paper_trail :on => [:create]
+        END
+        @fluxor = Fluxor.new.tap { |model| model.paper_trail_event = 'created' }
+        @fluxor.update_attributes :name => 'blah'
+        @fluxor.destroy
+      end
+      should 'only have a version for the created event' do
+        assert_equal 1, @fluxor.versions.length
+        assert_equal 'created', @fluxor.versions.last.event
+      end
+    end
+    describe 'on update' do
+      setup do
+        Fluxor.reset_callbacks :create
+        Fluxor.reset_callbacks :update
+        Fluxor.reset_callbacks :destroy
+        Fluxor.instance_eval <<-END
+          has_paper_trail :on => [:update]
+        END
+        @fluxor = Fluxor.create.tap { |model| model.paper_trail_event = 'name_updated' }
+        @fluxor.update_attributes :name => 'blah'
+        @fluxor.destroy
+      end
+      should 'only have a version for the name_updated event' do
+        assert_equal 1, @fluxor.versions.length
+        assert_equal 'name_updated', @fluxor.versions.last.event
+      end
+    end
+    describe 'on destroy' do
+      setup do
+        Fluxor.reset_callbacks :create
+        Fluxor.reset_callbacks :update
+        Fluxor.reset_callbacks :destroy
+        Fluxor.instance_eval <<-END
+          has_paper_trail :on => [:destroy]
+        END
+        @fluxor = Fluxor.create.tap { |model| model.paper_trail_event = 'destroyed' }
+        @fluxor.update_attributes :name => 'blah'
+        @fluxor.destroy
+      end
+      should 'only have a version for the destroy event' do
+        assert_equal 1, @fluxor.versions.length
+        assert_equal 'destroyed', @fluxor.versions.last.event
+      end
+    end
+  end
+
+  describe '`PaperTrail::Config.version_limit` set' do
+    setup do
+      PaperTrail.config.version_limit = 2
+      @widget = Widget.create! :name => 'Henry'
+      6.times { @widget.update_attribute(:name, Faker::Lorem.word) }
+    end
+
+    teardown { PaperTrail.config.version_limit = nil }
+
+    should "limit the number of versions to 3 (2 plus the created at event)" do
+      assert_equal 'create', @widget.versions.first.event
+      assert_equal 3, @widget.versions.size
+    end
+  end
+
 
   private
 

@@ -41,25 +41,17 @@ module PaperTrail
         attr_accessor self.version_association_name
 
         class_attribute :version_class_name
-        self.version_class_name = options[:class_name] || 'Version'
+        self.version_class_name = options[:class_name] || '::Version'
 
-        class_attribute :ignore
-        self.ignore = ([options[:ignore]].flatten.compact || []).map &:to_s
+        class_attribute :paper_trail_options
+        self.paper_trail_options = options.dup
 
-        class_attribute :if_condition
-        self.if_condition = options[:if]
+        [:ignore, :skip, :only].each do |k|
+          paper_trail_options[k] =
+            ([paper_trail_options[k]].flatten.compact || []).map &:to_s
+        end
 
-        class_attribute :unless_condition
-        self.unless_condition = options[:unless]
-
-        class_attribute :skip
-        self.skip = ([options[:skip]].flatten.compact || []).map &:to_s
-
-        class_attribute :only
-        self.only = ([options[:only]].flatten.compact || []).map &:to_s
-
-        class_attribute :meta
-        self.meta = options[:meta] || {}
+        paper_trail_options[:meta] ||= {}
 
         class_attribute :paper_trail_enabled_for_model
         self.paper_trail_enabled_for_model = true
@@ -73,14 +65,19 @@ module PaperTrail
         class_attribute :changed_method
         self.changed_method = options[:changed_method] || :changed
 
-        has_many self.versions_association_name,
-                 :class_name => version_class_name,
-                 :as         => :item,
-                 :order      => "#{PaperTrail.timestamp_field} ASC, #{self.version_class_name.constantize.primary_key} ASC"
+        attr_accessor :paper_trail_event
 
+        has_many self.versions_association_name,
+                 lambda { |_model| order("#{PaperTrail.timestamp_field} ASC") },
+                 :class_name => self.version_class_name, :as => :item
         after_create  :record_create, :if => :save_version? if !options[:on] || options[:on].include?(:create)
+        #before_update :record_update, :if => :save_version? if !options[:on] || options[:on].include?(:update)
         after_validation :record_update, :if => :save_version?, :on => :update if !options[:on] || options[:on].include?(:update)
-        after_destroy :record_destroy if !options[:on] || options[:on].include?(:destroy)
+        after_destroy :record_destroy, :if => :save_version? if !options[:on] || options[:on].include?(:destroy)
+      end
+
+      def version_key
+        self.version_class_name.constantize.primary_key
       end
 
       # Switches PaperTrail off for this class.
@@ -91,6 +88,48 @@ module PaperTrail
       # Switches PaperTrail on for this class.
       def paper_trail_on
         self.paper_trail_enabled_for_model = true
+      end
+
+      # Used for Version#object attribute
+      def serialize_attributes_for_paper_trail(attributes)
+        serialized_attributes.each do |key, coder|
+          if attributes.key?(key)
+            coder = PaperTrail::Serializers::Yaml unless coder.respond_to?(:dump) # Fall back to YAML if `coder` has no `dump` method
+            attributes[key] = coder.dump(attributes[key])
+          end
+        end
+      end
+
+      def unserialize_attributes_for_paper_trail(attributes)
+        serialized_attributes.each do |key, coder|
+          if attributes.key?(key)
+            coder = PaperTrail::Serializers::Yaml unless coder.respond_to?(:dump)
+            attributes[key] = coder.load(attributes[key])
+          end
+        end
+      end
+
+      # Used for Version#object_changes attribute
+      def serialize_attribute_changes(changes)
+        serialized_attributes.each do |key, coder|
+          if changes.key?(key)
+            coder = PaperTrail::Serializers::Yaml unless coder.respond_to?(:dump) # Fall back to YAML if `coder` has no `dump` method
+            old_value, new_value = changes[key]
+            changes[key] = [coder.dump(old_value),
+                            coder.dump(new_value)]
+          end
+        end
+      end
+
+      def unserialize_attribute_changes(changes)
+        serialized_attributes.each do |key, coder|
+          if changes.key?(key)
+            coder = PaperTrail::Serializers::Yaml unless coder.respond_to?(:dump)
+            old_value, new_value = changes[key]
+            changes[key] = [coder.load(old_value),
+                            coder.load(new_value)]
+          end
+        end
       end
     end
 
@@ -105,7 +144,7 @@ module PaperTrail
 
       # Returns who put the object into its current state.
       def originator
-        version_class.with_item_keys(self.class.name, id).last.try :whodunnit
+        version_class.with_item_keys(self.class.base_class.name, id).last.try :whodunnit
       end
 
       # Returns the object (not a Version) as it was at the given timestamp.
@@ -125,15 +164,17 @@ module PaperTrail
       # Returns the object (not a Version) as it was most recently.
       def previous_version
         preceding_version = source_version ? source_version.previous : send(self.class.versions_association_name).last
-        preceding_version.try :reify
+        preceding_version.reify if preceding_version
       end
 
       # Returns the object (not a Version) as it became next.
+      # NOTE: if self (the item) was not reified from a version, i.e. it is the
+      #  "live" item, we return nil.  Perhaps we should return self instead?
       def next_version
-        # NOTE: if self (the item) was not reified from a version, i.e. it is the
-        # "live" item, we return nil.  Perhaps we should return self instead?
-        subsequent_version = source_version ? source_version.next : nil
-        subsequent_version.reify if subsequent_version
+        subsequent_version = source_version.next
+        subsequent_version ? subsequent_version.reify : self.class.find(self.id)
+      rescue
+        nil
       end
 
       # Executes the given method or block without creating a new version.
@@ -157,22 +198,41 @@ module PaperTrail
 
       def record_create
         if switched_on?
-          send(self.class.versions_association_name).create merge_metadata(:event => 'create', :whodunnit => PaperTrail.whodunnit)
+          data = {
+            :event     => paper_trail_event || 'create',
+            :whodunnit => PaperTrail.whodunnit
+          }
+
+          if changed_notably? and version_class.column_names.include?('object_changes')
+            data[:object_changes] = PaperTrail.serializer.dump(changes_for_paper_trail)
+          end
+
+          send(self.class.versions_association_name).create merge_metadata(data)
         end
       end
 
       def record_update
         if switched_on? && changed_notably?
           data = {
-            :event     => 'update',
+            :event     => paper_trail_event || 'update',
             :object    => object_to_string(item_before_change),
             :whodunnit => PaperTrail.whodunnit
           }
           if version_class.column_names.include? 'object_changes'
             # The double negative (reject, !include?) preserves the hash structure of self.changes.
-            data[:object_changes] = notably_changes
+            #data[:object_changes] = PaperTrail.serializer.dump(notably_changes)
+            #rails 4 way... needs to be evaluated
+            data[:object_changes] = PaperTrail.serializer.dump(changes_for_paper_trail)
           end
           send(self.class.versions_association_name).build merge_metadata(data)
+        end
+      end
+
+      def changes_for_paper_trail
+        self.changes.delete_if do |key, value|
+          !notably_changed.include?(key)
+        end.tap do |changes|
+          self.class.serialize_attribute_changes(changes) # Use serialized value for attributes when necessary
         end
       end
 
@@ -180,7 +240,7 @@ module PaperTrail
         if switched_on? and not new_record?
           version_class.create merge_metadata(:item_id   => self.id,
                                               :item_type => self.class.base_class.name,
-                                              :event     => 'destroy',
+                                              :event     => paper_trail_event || 'destroy',
                                               :object    => object_to_string(item_before_change),
                                               :whodunnit => PaperTrail.whodunnit)
         end
@@ -189,12 +249,17 @@ module PaperTrail
 
       def merge_metadata(data)
         # First we merge the model-level metadata in `meta`.
-        meta.each do |k,v|
+        paper_trail_options[:meta].each do |k,v|
           data[k] =
             if v.respond_to?(:call)
               v.call(self)
             elsif v.is_a?(Symbol) && respond_to?(v)
-              send(v)
+              # if it is an attribute that is changing, be sure to grab the current version
+              if has_attribute?(v) && send("#{v}_changed?".to_sym)
+                send("#{v}_was".to_sym)
+              else
+                send(v)
+              end
             else
               v
             end
@@ -211,7 +276,6 @@ module PaperTrail
         end
         previous.tap do |prev|
           prev.id = id
-
           # do not use the attr_accessor of translated attributes, because
           # otherwise globalize would write it to its stash and not save the
           # update
@@ -219,12 +283,15 @@ module PaperTrail
           if respond_to? :translated?
             relevant_attributes.reject!{|k,v| translated? k}
           end
-          relevant_attributes.each { |attr, before| prev[attr] = before }
+          relevant_attributes.select { |k,v| self.class.column_names.include?(k) }.each { |attr, before| prev[attr] = before }
         end
       end
 
       def object_to_string(object)
-        object.attributes.except(*self.class.skip).to_yaml
+        _attrs = object.attributes.except(*self.class.paper_trail_options[:skip]).tap do |attributes|
+          self.class.serialize_attributes_for_paper_trail attributes
+        end
+        PaperTrail.serializer.dump(_attrs)
       end
 
       def changed_notably?
@@ -232,7 +299,8 @@ module PaperTrail
       end
 
       def notably_changed
-        self.class.only.empty? ? changed_and_not_ignored : (changed_and_not_ignored & self.class.only)
+        only = self.class.paper_trail_options[:only]
+        only.empty? ? changed_and_not_ignored : (changed_and_not_ignored & only)
       end
 
       def notably_changes
@@ -243,11 +311,15 @@ module PaperTrail
       end
 
       def changed_and_not_ignored
-        self.send(self.class.changed_method) - self.class.ignore - self.class.skip
+        ignore = self.class.paper_trail_options[:ignore]
+        skip   = self.class.paper_trail_options[:skip]
+        self.send(self.class.changed_method) - ignore - skip
       end
 
       def ignored_or_skipped
-        self.class.ignore + self.class.skip
+        ignore = self.class.paper_trail_options[:ignore]
+        skip   = self.class.paper_trail_options[:skip]
+        ignore + skip
       end
 
       def switched_on?
@@ -255,6 +327,8 @@ module PaperTrail
       end
 
       def save_version?
+        if_condition     = self.class.paper_trail_options[:if]
+        unless_condition = self.class.paper_trail_options[:unless]
         (if_condition.blank? || if_condition.call(self)) && !unless_condition.try(:call, self)
       end
     end
