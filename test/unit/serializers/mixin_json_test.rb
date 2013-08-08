@@ -14,7 +14,7 @@ class MixinJsonTest < ActiveSupport::TestCase
     @hash_as_json = @hash.to_json
   end
 
-  describe '`load` class method' do
+  context '`load` class method' do
     should 'exist' do
       assert CustomJsonSerializer.respond_to?(:load)
     end
@@ -24,7 +24,7 @@ class MixinJsonTest < ActiveSupport::TestCase
     end
   end
 
-  describe '`dump` class method' do
+  context '`dump` class method' do
     should 'exist' do
       assert CustomJsonSerializer.respond_to?(:dump)
     end

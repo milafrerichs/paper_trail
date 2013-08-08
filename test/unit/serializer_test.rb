@@ -3,7 +3,7 @@ require 'custom_json_serializer'
 
 class SerializerTest < ActiveSupport::TestCase
 
-  describe 'YAML Serializer' do
+  context 'YAML Serializer' do
     setup do
       Fluxor.instance_eval <<-END
         has_paper_trail
@@ -30,7 +30,7 @@ class SerializerTest < ActiveSupport::TestCase
     end
   end
 
-  describe 'Custom Serializer' do
+  context 'JSON Serializer' do
     setup do
       PaperTrail.configure do |config|
         config.serializer = PaperTrail::Serializers::Json
@@ -72,7 +72,7 @@ class SerializerTest < ActiveSupport::TestCase
     end
   end
 
-  describe 'Custom Serializer' do
+  context 'Custom Serializer' do
     setup do
       PaperTrail.configure do |config|
         config.serializer = CustomJsonSerializer

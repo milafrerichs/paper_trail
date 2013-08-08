@@ -1,13 +1,14 @@
 require 'paper_trail/config'
 require 'paper_trail/controller'
 require 'paper_trail/has_paper_trail'
-require 'paper_trail/version'
+require 'paper_trail/cleaner'
 
 require 'paper_trail/serializers/yaml'
 require 'paper_trail/serializers/json'
 
 # PaperTrail's module methods can be called in both models and controllers.
 module PaperTrail
+  extend PaperTrail::Cleaner
 
   # Switches PaperTrail on or off.
   def self.enabled=(value)
@@ -78,6 +79,10 @@ module PaperTrail
     PaperTrail.config.serializer
   end
 
+  def self.active_record_protected_attributes?
+    @active_record_protected_attributes ||= ActiveRecord::VERSION::STRING.to_f < 4.0 || defined?(ProtectedAttributes)
+  end
+
   private
 
   # Thread-safe hash to hold PaperTrail's data.
@@ -99,6 +104,7 @@ module PaperTrail
 
 end
 
+require 'paper_trail/version'
 
 ActiveSupport.on_load(:active_record) do
   include PaperTrail::Model

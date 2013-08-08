@@ -41,7 +41,7 @@ module PaperTrail
         attr_accessor self.version_association_name
 
         class_attribute :version_class_name
-        self.version_class_name = options[:class_name] || '::Version'
+        self.version_class_name = options[:class_name] || 'PaperTrail::Version'
 
         class_attribute :paper_trail_options
         self.paper_trail_options = options.dup
@@ -67,17 +67,21 @@ module PaperTrail
 
         attr_accessor :paper_trail_event
 
-        has_many self.versions_association_name,
-                 lambda { |_model| order("#{PaperTrail.timestamp_field} ASC") },
-                 :class_name => self.version_class_name, :as => :item
+        if ActiveRecord::VERSION::STRING.to_f >= 4.0 # `has_many` syntax for specifying order uses a lambda in Rails 4
+          has_many self.versions_association_name,
+            lambda { order("#{PaperTrail.timestamp_field} ASC") },
+            :class_name => self.version_class_name, :as => :item
+        else
+          has_many self.versions_association_name,
+            :class_name => version_class_name,
+            :as         => :item,
+            :order      => "#{PaperTrail.timestamp_field} ASC"
+        end
+                 
         after_create  :record_create, :if => :save_version? if !options[:on] || options[:on].include?(:create)
-        #before_update :record_update, :if => :save_version? if !options[:on] || options[:on].include?(:update)
-        after_validation :record_update, :if => :save_version?, :on => :update if !options[:on] || options[:on].include?(:update)
+        #after_validation :record_update, :if => :save_version?, :on => :update if !options[:on] || options[:on].include?(:update) #Nic needs update_attributes in tests
+        before_update :record_update, :if => :save_version?, :on => :update if !options[:on] || options[:on].include?(:update)
         after_destroy :record_destroy, :if => :save_version? if !options[:on] || options[:on].include?(:destroy)
-      end
-
-      def version_key
-        self.version_class_name.constantize.primary_key
       end
 
       # Switches PaperTrail off for this class.
@@ -220,9 +224,7 @@ module PaperTrail
           }
           if version_class.column_names.include? 'object_changes'
             # The double negative (reject, !include?) preserves the hash structure of self.changes.
-            #data[:object_changes] = PaperTrail.serializer.dump(notably_changes)
-            #rails 4 way... needs to be evaluated
-            data[:object_changes] = PaperTrail.serializer.dump(changes_for_paper_trail)
+            data[:object_changes] = PaperTrail.serializer.dump(notably_changes)
           end
           send(self.class.versions_association_name).build merge_metadata(data)
         end
@@ -243,8 +245,8 @@ module PaperTrail
                                               :event     => paper_trail_event || 'destroy',
                                               :object    => object_to_string(item_before_change),
                                               :whodunnit => PaperTrail.whodunnit)
+          send(self.class.versions_association_name).send :load_target
         end
-        send(self.class.versions_association_name).send :load_target
       end
 
       def merge_metadata(data)
@@ -307,6 +309,8 @@ module PaperTrail
         # The double negative (reject, !include?) preserves the hash structure of self.changes.
         send(self.class.changes_method).reject do |key, value|
           ignored_or_skipped.include?(key)
+        end.tap do |changes|
+          self.class.serialize_attribute_changes(changes) # Use serialized value for attributes when necessary
         end
       end
 

@@ -1,4 +1,4 @@
-# PaperTrail [![Build Status](https://secure.travis-ci.org/airblade/paper_trail.png?branch=rails4)](http://travis-ci.org/airblade/paper_trail) [![Dependency Status](https://gemnasium.com/airblade/paper_trail.png)](https://gemnasium.com/airblade/paper_trail)
+# PaperTrail [![Build Status](https://secure.travis-ci.org/airblade/paper_trail.png?branch=master)](http://travis-ci.org/airblade/paper_trail) [![Dependency Status](https://gemnasium.com/airblade/paper_trail.png)](https://gemnasium.com/airblade/paper_trail)
 
 PaperTrail lets you track changes to your models' data.  It's good for auditing or versioning.  You can see how a model looked at any stage in its lifecycle, revert it to any version, and even undelete it after it's been destroyed.
 
@@ -29,9 +29,30 @@ There's an excellent [Railscast on implementing Undo with Paper Trail](http://ra
 * Threadsafe.
 
 
-## Rails Version
+## Compatibility
 
-Works on Rails 3 and Rails 2.3.  The Rails 3 code is on the `master` branch and tagged `v2.x`.  The Rails 2.3 code is on the `rails2` branch and tagged `v1.x`.  Please note I'm not adding new features to the Rails 2.3 codebase.
+Works with ActiveRecord 4 and ActiveRecord 3. Note: this code is on the `master` branch and tagged `v3.x`.
+
+Version 2 is on the branch named [`2.7-stable`](https://github.com/airblade/paper_trail/tree/2.7-stable) and is tagged `v2.x`, and works with Rails 3.
+The Rails 2.3 code is on the [`rails2`](https://github.com/airblade/paper_trail/tree/2.7-stable) branch and tagged `v1.x`. These branches are both stable with their respective versions of Rails but will not have new features added/backported to them.
+
+## Installation
+
+### Rails 3 & 4
+
+1. Install PaperTrail as a gem via your `Gemfile`:
+
+    `gem 'paper_trail', '~> 3.0'`
+
+2. Generate a migration which will add a `versions` table to your database.
+
+    `bundle exec rails generate paper_trail:install`
+
+3. Run the migration.
+
+    `bundle exec rake db:migrate`
+
+4. Add `has_paper_trail` to the models you want to track.
 
 
 ## API Summary
@@ -72,7 +93,7 @@ Widget.paper_trail_off
 Widget.paper_trail_on
 ```
 
-And a `Version` instance has these methods:
+And a `PaperTrail::Version` instance has these methods:
 
 ```ruby
 # Returns the item restored from this version.
@@ -124,7 +145,7 @@ This gives you a `versions` method which returns the paper trail of changes to y
 
 ```ruby
 >> widget = Widget.find 42
->> widget.versions             # [<Version>, <Version>, ...]
+>> widget.versions             # [<PaperTrail::Version>, <PaperTrail::Version>, ...]
 ```
 
 Once you have a version, you can find out what happened:
@@ -193,7 +214,7 @@ class Article < ActiveRecord::Base
 end
 ```
 
-You may also have the `Version` model save a custom string in it's `event` field instead of the typical `create`, `update`, `destroy`.
+You may also have the `PaperTrail::Version` model save a custom string in it's `event` field instead of the typical `create`, `update`, `destroy`.
 PaperTrail supplies a custom accessor method called `paper_trail_event`, which it will attempt to use to fill the `event` field before
 falling back on one of the default events.
 
@@ -233,7 +254,7 @@ class Article < ActiveRecord::Base
 end
 ```
 
-This means that changes to just the `title` or `rating` will not store another version of the article.  It does not mean that the `title` and `rating` attributes will be ignored if some other change causes a new `Version` to be created.  For example:
+This means that changes to just the `title` or `rating` will not store another version of the article.  It does not mean that the `title` and `rating` attributes will be ignored if some other change causes a new `PaperTrail::Version` to be created.  For example:
 
 ```ruby
 >> a = Article.create
@@ -267,7 +288,7 @@ This means that only changes to the `title` will save a version of the article:
 
 Passing both `:ignore` and `:only` options will result in the article being saved if a changed attribute is included in `:only` but not in `:ignore`.
 
-You can skip fields altogether with the `:skip` option.  As with `:ignore`, updates to these fields will not create a new `Version`.  In addition, these fields will not be included in the serialised version of the object whenever a new `Version` is created.
+You can skip fields altogether with the `:skip` option.  As with `:ignore`, updates to these fields will not create a new `PaperTrail::Version`.  In addition, these fields will not be included in the serialized version of the object whenever a new `PaperTrail::Version` is created.
 
 For example:
 
@@ -304,7 +325,7 @@ Undeleting is just as simple:
 >> widget = Widget.find 42
 >> widget.destroy
 # Time passes....
->> widget = Version.find(153).reify    # the widget as it was before it was destroyed
+>> widget = PaperTrail::Version.find(153).reify    # the widget as it was before it was destroyed
 >> widget.save                         # the widget lives!
 ```
 
@@ -363,7 +384,7 @@ You can find out whether a model instance is the current, live one -- or whether
 If your `ApplicationController` has a `current_user` method, PaperTrail will store the value it returns in the `version`'s `whodunnit` column.  Note that this column is a string so you will have to convert it to an integer if it's an id and you want to look up the user later on:
 
 ```ruby
->> last_change = Widget.versions.last
+>> last_change = widget.versions.last
 >> user_who_made_the_change = User.find last_change.whodunnit.to_i
 ```
 
@@ -388,7 +409,7 @@ In a migration or in `rails console` you can set who is responsible like this:
 You can avoid having to do this manually by setting your initializer to pick up the username of the current user from the OS, like this:
 
 ```ruby
-class Version < ActiveRecord::Base
+class PaperTrail::Version < ActiveRecord::Base
   if defined?(Rails::Console)
     PaperTrail.whodunnit = "#{`whoami`.strip}: console"
   elsif File.basename($0) == "rake"
@@ -423,7 +444,7 @@ To find out who made a `version`'s object look that way, use `version.originator
 You can specify custom version subclasses with the `:class_name` option:
 
 ```ruby
-class PostVersion < Version
+class PostVersion < PaperTrail::Version
   # custom behaviour, e.g:
   self.table_name = :post_versions
 end
@@ -438,7 +459,7 @@ This allows you to store each model's versions in a separate table, which is use
 If you are using Postgres, you should also define the sequence that your custom version class will use:
 
 ```ruby
-class PostVersion < Version
+class PostVersion < PaperTrail::Version
   self.table_name = :post_versions
   self.sequence_name = :post_version_id_seq
 end
@@ -451,7 +472,7 @@ If you only use custom version classes and don't use PaperTrail's built-in one, 
 - either declare PaperTrail's version class abstract like this (in `config/initializers/paper_trail_patch.rb`):
 
 ```ruby
-Version.module_eval do
+PaperTrail::Version.module_eval do
   self.abstract_class = true
 end
 ```
@@ -609,15 +630,17 @@ For example:
 
 ```ruby
 # config/initializers/paper_trail.rb
-class Version < ActiveRecord::Base
-  attr_accessible :author_id, :word_count, :answer
+module PaperTrail
+  class Version < ActiveRecord::Base
+    attr_accessible :author_id, :word_count, :answer
+  end
 end
 ```
 
 Why would you do this?  In this example, `author_id` is an attribute of `Article` and PaperTrail will store it anyway in serialized (YAML) form in the `object` column of the `version` record.  But let's say you wanted to pull out all versions for a particular author; without the metadata you would have to deserialize (reify) each `version` object to see if belonged to the author in question.  Clearly this is inefficient.  Using the metadata you can find just those versions you want:
 
 ```ruby
-Version.all(:conditions => ['author_id = ?', author_id])
+PaperTrail::Version.all(:conditions => ['author_id = ?', author_id])
 ```
 
 Note you can pass a symbol as a value in the `meta` hash to signal a method to call.
@@ -793,31 +816,8 @@ sql> delete from versions where created_at < 2010-06-01;
 ```
 
 ```ruby
->> Version.delete_all ["created_at < ?", 1.week.ago]
+>> PaperTrail::Version.delete_all ["created_at < ?", 1.week.ago]
 ```
-
-## Installation
-
-### Rails 3
-
-1. Install PaperTrail as a gem via your `Gemfile`:
-
-    `gem 'paper_trail', '~> 2'`
-
-2. Generate a migration which will add a `versions` table to your database.
-
-    `bundle exec rails generate paper_trail:install`
-
-3. Run the migration.
-
-    `bundle exec rake db:migrate`
-
-4. Add `has_paper_trail` to the models you want to track.
-
-### Rails 2
-
-Please see the `rails2` branch.
-
 
 ## Testing
 
