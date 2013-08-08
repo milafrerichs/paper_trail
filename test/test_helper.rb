@@ -4,7 +4,6 @@ ENV["RAILS_ENV"] = "test"
 require File.expand_path("../dummy/config/environment.rb",  __FILE__)
 require "rails/test_help"
 require "minitest/reporters"
-require "minitest/autorun"
 MiniTest::Reporters.use! MiniTest::Reporters::SpecReporter.new
 #ActionMailer::Base.delivery_method = :test
 #ActionMailer::Base.perform_deliveries = true
@@ -13,7 +12,6 @@ MiniTest::Reporters.use! MiniTest::Reporters::SpecReporter.new
 Rails.backtrace_cleaner.remove_silencers!
 
 require 'ffaker'
-require 'shoulda'
 
 # Run any available migration
 ActiveRecord::Migrator.migrate File.expand_path("../dummy/db/migrate/", __FILE__)
